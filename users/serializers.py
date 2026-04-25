@@ -1,6 +1,6 @@
 from rest_framework.serializers import ModelSerializer
 from rest_framework import serializers
-from .models import CustomUser, Job
+from .models import CustomUser, Job, Resume, JobApplication, Notification
 from django.contrib.auth import authenticate
 
 class CustomUserSerializer(ModelSerializer):
@@ -14,7 +14,7 @@ class JobSerializer(ModelSerializer):
     
     class Meta:
         model = Job
-        fields = ("id", "title", "description", "location", "job_type", "company_name", "salary_min", "salary_max", "requirements", "hr_user", "hr_user_name", "posted_date", "is_active")
+        fields = ("id", "title", "description", "location", "job_type", "company_name", "salary_min", "salary_max", "salary_currency", "requirements", "hr_user", "hr_user_name", "posted_date", "is_active")
         read_only_fields = ("id", "hr_user", "posted_date")
 
 class SignUpSerializer(ModelSerializer):
@@ -55,3 +55,45 @@ class LoginSerializer(serializers.Serializer):
         
         data['user'] = user
         return data
+
+
+class ResumeSerializer(ModelSerializer):
+    class Meta:
+        model = Resume
+        fields = ("id", "user", "resume_file", "uploaded_at", "updated_at")
+        read_only_fields = ("id", "user", "uploaded_at", "updated_at")
+    
+    def validate_resume_file(self, value):
+        if not value.name.endswith('.pdf'):
+            raise serializers.ValidationError("Only PDF files are allowed.")
+        return value
+
+class JobApplicationSerializer(ModelSerializer):
+    applicant_name = serializers.CharField(source='applicant.username', read_only=True)
+    applicant_email = serializers.CharField(source='applicant.email', read_only=True)
+    resume_url = serializers.SerializerMethodField(read_only=True)
+    job_title = serializers.CharField(source='job.title', read_only=True)
+
+    class Meta:
+        model = JobApplication
+        fields = ("id", "job", "job_title", "applicant", "applicant_name", "applicant_email", "resume_url", "status", "match_percentage", "missing_skills", "applied_date", "updated_at")
+        read_only_fields = ("id", "applicant", "applied_date", "updated_at")
+
+    def get_resume_url(self, obj):
+        request = self.context.get('request')
+        resume = getattr(obj.applicant, 'resume', None)
+        if resume and resume.resume_file:
+            if request is not None:
+                return request.build_absolute_uri(resume.resume_file.url)
+            return resume.resume_file.url
+        return None
+
+
+class NotificationSerializer(ModelSerializer):
+    job_title = serializers.CharField(source='job_application.job.title', read_only=True, allow_null=True)
+    company_name = serializers.CharField(source='job_application.job.company_name', read_only=True, allow_null=True)
+
+    class Meta:
+        model = Notification
+        fields = ("id", "user", "job_application", "notification_type", "title", "message", "is_read", "job_title", "company_name", "created_at")
+        read_only_fields = ("id", "user", "created_at")
