@@ -30,6 +30,18 @@ class UserInfoView(RetrieveUpdateAPIView):
 
     def get_object(self):
         return self.request.user
+    
+    def update(self, request, *args, **kwargs):
+        try:
+            partial = kwargs.pop('partial', False)
+            self.object = self.get_object()
+            serializer = self.get_serializer(self.object, data=request.data, partial=partial)
+            if not serializer.is_valid():
+                return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+            serializer.save()
+            return Response(serializer.data)
+        except Exception as e:
+            return Response({'error': str(e)}, status=status.HTTP_400_BAD_REQUEST)
 
 class SignUpView(CreateAPIView):
     queryset = CustomUser.objects.all()
@@ -328,12 +340,31 @@ class AIGenerateJDView(APIView):
     permission_classes = (IsAuthenticated,)
     
     def post(self, request):
-        if request.user.user_type != 'hr':
-            return Response({'error': 'Only HR users can generate JDs'}, status=status.HTTP_403_FORBIDDEN)
+        try:
+            if request.user.user_type != 'hr':
+                return Response({'error': 'Only HR users can generate JDs'}, status=status.HTTP_403_FORBIDDEN)
             
-        title = request.data.get('title', '')
-        level = request.data.get('level', '')
-        skills = request.data.get('skills', '')
-        
-        data = generate_job_description(title, level, skills)
-        return Response(data, status=status.HTTP_200_OK)
+            title = request.data.get('title', '').strip()
+            level = request.data.get('level', '').strip()
+            skills = request.data.get('skills', '').strip()
+            
+            if not title:
+                return Response({'error': 'Job title is required'}, status=status.HTTP_400_BAD_REQUEST)
+            if not skills:
+                return Response({'error': 'Key skills are required'}, status=status.HTTP_400_BAD_REQUEST)
+            
+            data = generate_job_description(title, level, skills)
+            
+            # Check if generation failed (error fields in response)
+            if "API Key not configured" in str(data.get('requirements', '')):
+                return Response(data, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+            if "Failed to" in str(data.get('description', '')):
+                return Response(data, status=status.HTTP_400_BAD_REQUEST)
+            
+            return Response(data, status=status.HTTP_200_OK)
+        except Exception as e:
+            print(f"Unhandled error in AIGenerateJDView: {type(e).__name__}: {e}")
+            return Response(
+                {'error': f'Server error: {str(e)}'}, 
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )

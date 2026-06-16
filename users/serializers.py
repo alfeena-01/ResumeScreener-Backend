@@ -4,10 +4,12 @@ from .models import CustomUser, Job, Resume, JobApplication, Notification
 from django.contrib.auth import authenticate
 
 class CustomUserSerializer(ModelSerializer):
+    profile_picture = serializers.ImageField(required=False, allow_null=True)
     
     class Meta:
         model = CustomUser
-        fields = ("id", "email", "username", "user_type")
+        fields = ("id", "email", "username", "user_type", "first_name", "last_name", "profile_picture")
+        read_only_fields = ("id", "email", "username", "user_type")
 
 class JobSerializer(ModelSerializer):
     hr_user_name = serializers.CharField(source='hr_user.username', read_only=True)
